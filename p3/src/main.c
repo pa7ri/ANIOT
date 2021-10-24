@@ -1,47 +1,34 @@
-#include "types.h"
+#include "customTypes.h"
 
-esp_timer_handle_t periodic_timer;
+esp_timer_handle_t periodic_timer_chrono;
+esp_timer_handle_t periodic_timer_sensor_hall;
+static bool s_pad_activated[TOUCH_PAD_MAX];
 bool isTimerActive = true;
 int countTimer = 0;
-int32_t time_since_boot = 0;
-
-#define TOUCH_PAD_NO_CHANGE (-1)
-#define TOUCH_THRESH_NO_USE (0)
-#define TOUCH_FILTER_MODE_EN (1)
-#define TOUCHPAD_FILTER_TOUCH_PERIOD (10)
 
 /*
-  Read values sensed at T0 and T9 touch pads and print out their values.
+  Read values sensed at T0 touch pad 
  */
 static void touchpad_read_task(void *args)
 {
-    uint16_t touch_value;
-    uint16_t touch_filter_value;
-    printf("Touch Sensor filter mode read, the output format is: \nTouchpad num:[raw data, filtered data]\n\n");
+    ESP_LOGI(TAG, "Touch Sensor interrupt mode activated");
 
     while (1)
     {
-        //Use pin T0 (pin GPIO4) from SensorTouch to start counter functionality
-        touch_pad_read_raw_data(0, &touch_value);
-        touch_pad_read_filtered(0, &touch_filter_value);
-        printf("T0:[%4d,%4d] \n", touch_value, touch_filter_value);
-
-        if (touch_value <= 500 && !isTimerActive)
-        { //5V
-            isTimerActive = true;
-            printf("Chronometer started \n");
-            esp_timer_start_periodic(periodic_timer, MICROS_PER_SECOND);
-        }
-
-        //Use pin T9 (pin 32K_XP) from SensorTouch to stop counter functionality
-        touch_pad_read_raw_data(9, &touch_value);
-        touch_pad_read_filtered(9, &touch_filter_value);
-        printf("T9:[%4d,%4d] \n", touch_value, touch_filter_value);
-        if (touch_value <= 500)
-        { //5V
-            isTimerActive = false;
-            printf("Chronometer stopped \n");
-            //esp_timer_stop_periodic(periodic_timer);
+        touch_pad_intr_enable();
+        //Use pin T0 (pin GPIO4) from SensorTouch to start/stop chronometer functionality
+        if (s_pad_activated[TOUCH_PAD_PIN_0] == true) {
+            //TODO: replace flag with start/stop event
+            isTimerActive = !isTimerActive;
+            if(isTimerActive) {
+                ESP_LOGI(TAG, "T%d activated, chronometer started", TOUCH_PAD_PIN_0);
+            } else {
+                ESP_LOGI(TAG, "T%d activated, chronometer stopped", TOUCH_PAD_PIN_0);
+            }
+            // Wait a while for the pad being released
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+            // Clear information on pad activation
+            s_pad_activated[TOUCH_PAD_PIN_0] = false;
         }
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
@@ -54,74 +41,103 @@ static void touchpad_read_task(void *args)
 static void reset_timer()
 {
     countTimer = 0;
-    esp_timer_stop(periodic_timer);
+    esp_timer_stop(periodic_timer_chrono);
 }
 
 /*
-  Read hall signal.
+  Init configuration for touch pads. Max = TOUCH_PAD_MAX (10). We will set T0 as start/stop
+  Also set thresholds to 2/3 regarding to the original value
  */
-static void hall_read_task(void* args) {
-    while (1)
+static void custom_touch_pad_init(void)
+{
+
+    uint16_t touch_value;
+    for (int i = 0; i < TOUCH_PAD_MAX; i++)
     {
-        adc1_config_width(ADC_WIDTH_12Bit);
-        int val = hall_sensor_read();
-        if(val > 10) { //TODO: check values
-            reset_timer();
-        }
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        touch_pad_config(i, TOUCH_THRESH_NO_USE);
+        //read filtered value and set interrupt threshold.
+        touch_pad_read_filtered(i, &touch_value);
+        ESP_ERROR_CHECK(touch_pad_set_thresh(i, touch_value * 2 / 3));
     }
 }
 
 /*
-  Init configuration for T0 and T9 touch pads. Max = TOUCH_PAD_MAX (10).
+  Handle an interrupt triggered when a pad is touched.
+  Recognize what pad has been touched and save it in a table.
  */
-static void custom_touch_pad_init(void)
+static void tp_example_rtc_intr(void *arg)
 {
-    touch_pad_config(0, TOUCH_THRESH_NO_USE);
-    touch_pad_config(9, TOUCH_THRESH_NO_USE);
+    uint32_t pad_intr = touch_pad_get_status();
+    //clear interrupt
+    touch_pad_clear_status();
+    for (int i = 0; i < TOUCH_PAD_MAX; i++) {
+        if ((pad_intr >> i) & 0x01) {
+            s_pad_activated[i] = true;
+        }
+    }
 }
 
 
 /*
   Timer callback handler
  */
-static void second_timer_callback(void *args)
+static void chronometer_timer_callback(void *args)
 {
+    //TODO: replace with counter event
     if (isTimerActive)
     {
         countTimer++;
     }
     printf("Chronometer (%02d:%02d) \n", countTimer / 60, countTimer % 60);
-    //int64_t time_since_boot = esp_timer_get_time();
+}
+
+/*
+  Sensor hall handler
+ */
+static void sensor_hall_timer_callback(void *args)
+{
+    // Reading voltage on ADC1 channel 0 (GPIO 36):
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    int value = hall_sensor_read();
+    printf("Sensor hall value: %d \n", value);
+    if(value <= SENSOR_HALL_THRESHOLD) {
+        reset_timer(); //TODO: replace with reset event
+    }
 }
 
 void app_main(void)
 {
 
-    // Touch pad
+    /* -------------------------  TOUCH PAD  -------------------------------*/   
+    ESP_LOGI(TAG, "Initializing touch pad");
     ESP_ERROR_CHECK(touch_pad_init());
+    touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
     // Set reference voltage for charging/discharging
-    // In this case, the high reference valtage will be 2.7V - 1V = 1.7V
-    // The low reference voltage will be 0.5
+    // High reference valtage will be 2.7V - 1V = 1.7V
+    // Low reference voltage will be 0.5
     touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
     custom_touch_pad_init();
-
-    #if TOUCH_FILTER_MODE_EN
-        touch_pad_filter_start(TOUCHPAD_FILTER_TOUCH_PERIOD);
-    #endif
-
+    touch_pad_isr_register(&touchpad_read_task, NULL);
+    touch_pad_filter_start(TOUCHPAD_FILTER_TOUCH_PERIOD);
+    
+    // Register touch interrupt ISR
+    touch_pad_isr_register(tp_example_rtc_intr, NULL);
     xTaskCreate(&touchpad_read_task, "touch_pad_read_task", 2048, NULL, 5, NULL);
 
-    // Hall TO FIX!
-    //xTaskCreate(&hall_read_task, "hall_read_task", 2048, NULL, 5, NULL);
-
-    // Timer
-    const esp_timer_create_args_t periodic_timer_args = {
-        .callback = &second_timer_callback,
+    /* -------------------------  SENSOR HALL  -------------------------------*/  
+    const esp_timer_create_args_t periodic_hall_timer_args = {
+        .callback = &sensor_hall_timer_callback,
         .name = "periodic"};
-    esp_timer_create(&periodic_timer_args, &periodic_timer);
+    esp_timer_create(&periodic_hall_timer_args, &periodic_timer_sensor_hall);
+    esp_timer_start_periodic(periodic_timer_sensor_hall, MICROS_PERIODIC_SENSOR_HALL);
 
-    esp_timer_start_periodic(periodic_timer, MICROS_PER_SECOND);
+
+    /* -------------------------  CHRONOMETER  -------------------------------*/  
+    const esp_timer_create_args_t periodic_chrono_timer_args = {
+        .callback = &chronometer_timer_callback,
+        .name = "periodic"};
+    esp_timer_create(&periodic_chrono_timer_args, &periodic_timer_chrono);
+    esp_timer_start_periodic(periodic_timer_chrono, MICROS_PERIODIC_CHRONOMETER);
 
     // Delete tasks
     vTaskDelete(NULL);
