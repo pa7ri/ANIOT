@@ -9,7 +9,7 @@ int countTimer = 0;
 /*
   Read values sensed at T0 touch pad 
  */
-static void touchpad_read_task(void *args)
+static void touchpad_read_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Touch Sensor interrupt mode activated");
 
@@ -34,38 +34,10 @@ static void touchpad_read_task(void *args)
     }
 }
 
-
-/*
-  Reset chronometer to 0 and stop timer.
- */
-static void reset_timer()
-{
-    countTimer = 0;
-    esp_timer_stop(periodic_timer_chrono);
-}
-
-/*
-  Init configuration for touch pads. Max = TOUCH_PAD_MAX (10). We will set T0 as start/stop
-  Also set thresholds to 2/3 regarding to the original value
- */
-static void custom_touch_pad_init(void)
-{
-
-    uint16_t touch_value;
-    for (int i = 0; i < TOUCH_PAD_MAX; i++)
-    {
-        touch_pad_config(i, TOUCH_THRESH_NO_USE);
-        //read filtered value and set interrupt threshold.
-        touch_pad_read_filtered(i, &touch_value);
-        ESP_ERROR_CHECK(touch_pad_set_thresh(i, touch_value * 2 / 3));
-    }
-}
-
 /*
   Handle an interrupt triggered when a pad is touched.
-  Recognize what pad has been touched and save it in a table.
  */
-static void tp_example_rtc_intr(void *arg)
+static void rtc_intr_touch_pad(void *arg)
 {
     uint32_t pad_intr = touch_pad_get_status();
     //clear interrupt
@@ -75,6 +47,41 @@ static void tp_example_rtc_intr(void *arg)
             s_pad_activated[i] = true;
         }
     }
+}
+
+/*
+ * Before reading touch pad, we need to initialize the RTC IO.
+ */
+static void custom_touch_pad_init(void)
+{
+    for (int i = 0; i < TOUCH_PAD_MAX; i++) {
+        //init RTC IO and mode for touch pad.
+        touch_pad_config(i, TOUCH_THRESH_NO_USE);
+    }
+}
+
+/*
+  Set thresholds to 2/3 regarding to the original value
+ */
+static void set_threshold_touch_pad(void)
+{
+
+    uint16_t touch_value;
+    for (int i = 0; i < TOUCH_PAD_MAX; i++)
+    {
+        touch_pad_read_filtered(i, &touch_value);
+        ESP_LOGI(TAG, "test init: touch pad [%d] val is %d", i, touch_value);
+        ESP_ERROR_CHECK(touch_pad_set_thresh(i, touch_value * 2 / 3));
+    }
+}
+
+/*
+  Reset chronometer to 0 and stop timer.
+ */
+static void reset_timer()
+{
+    countTimer = 0;
+    esp_timer_stop(periodic_timer_chrono);
 }
 
 
@@ -88,7 +95,7 @@ static void chronometer_timer_callback(void *args)
     {
         countTimer++;
     }
-    printf("Chronometer (%02d:%02d) \n", countTimer / 60, countTimer % 60);
+    ESP_LOGI(TAG, "Chronometer (%02d:%02d)", countTimer / 60, countTimer % 60);
 }
 
 /*
@@ -99,7 +106,7 @@ static void sensor_hall_timer_callback(void *args)
     // Reading voltage on ADC1 channel 0 (GPIO 36):
     adc1_config_width(ADC_WIDTH_BIT_12);
     int value = hall_sensor_read();
-    printf("Sensor hall value: %d \n", value);
+    // printf("Sensor hall value: %d \n", value);
     if(value <= SENSOR_HALL_THRESHOLD) {
         reset_timer(); //TODO: replace with reset event
     }
@@ -117,11 +124,12 @@ void app_main(void)
     // Low reference voltage will be 0.5
     touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
     custom_touch_pad_init();
-    touch_pad_isr_register(&touchpad_read_task, NULL);
     touch_pad_filter_start(TOUCHPAD_FILTER_TOUCH_PERIOD);
+    // Set threshold
+    set_threshold_touch_pad();
     
     // Register touch interrupt ISR
-    touch_pad_isr_register(tp_example_rtc_intr, NULL);
+    touch_pad_isr_register(&rtc_intr_touch_pad, NULL);
     xTaskCreate(&touchpad_read_task, "touch_pad_read_task", 2048, NULL, 5, NULL);
 
     /* -------------------------  SENSOR HALL  -------------------------------*/  
@@ -142,3 +150,4 @@ void app_main(void)
     // Delete tasks
     vTaskDelete(NULL);
 }
+

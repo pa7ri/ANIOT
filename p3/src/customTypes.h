@@ -13,11 +13,14 @@
 #include "freertos/queue.h"
 #include "driver/touch_pad.h"
 #include "driver/adc.h"
+#include "soc/rtc_periph.h"
+#include "soc/sens_periph.h"
 
 #define TOUCH_PAD_NO_CHANGE (-1)
 #define TOUCH_THRESH_NO_USE (0)
 #define TOUCH_FILTER_MODE_EN (1)
 #define TOUCH_PAD_MAX (10)
+#define TOUCH_THRESH_PERCENT  (80)
 #define TOUCHPAD_FILTER_TOUCH_PERIOD (10)
 
 #define SENSOR_HALL_THRESHOLD 10 // TODO: config that
