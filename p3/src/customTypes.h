@@ -23,12 +23,20 @@
 #define TOUCH_THRESH_PERCENT  (80)
 #define TOUCHPAD_FILTER_TOUCH_PERIOD (10)
 
-#define SENSOR_HALL_THRESHOLD 10 // TODO: config that
+#define SENSOR_HALL_THRESHOLD 0             // Default: 30, when a magnet is close <0 
 
-#define TOUCH_PAD_PIN_0 0 // 1 second
+#define PRIORITY_STATUS_HANDLER_TASK 4      // min -->0, max --> 9
+
+
+#define TOUCH_PAD_PIN_0 0                   // PIN ID 0
 
 #define MICROS_PERIODIC_CHRONOMETER 1000000 // 1 second
 #define MICROS_PERIODIC_SENSOR_HALL 10000   // 10 millis
 #define TAG "P3"
+
+enum machine_status{COUNT_TIMER, START_STOP_TIMER, RESET_TIMER};
+static const char *machine_status_string[] = {
+    "count_timer", "start_stop_timer", "reset_timer",
+};
 
 #endif
