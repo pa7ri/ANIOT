@@ -13,7 +13,7 @@ static void send_machine_state(void *args)
 {
     enum machine_status status = *(enum machine_status *)args;
     if (xQueueSend(queueOut, &status, 200) != pdTRUE) {
-        printf("ERROR: Could not put item on delay queue.");
+        ESP_LOGE(TAG, "ERROR: Could not put item on delay queue.");
     }
 }
 
@@ -76,7 +76,7 @@ static void set_threshold_touch_pad(void)
     for (int i = 0; i < TOUCH_PAD_MAX; i++)
     {
         touch_pad_read_filtered(i, &touch_value);
-        ESP_LOGI(TAG, "test init: touch pad [%d] val is %d", i, touch_value);
+        ESP_LOGD(TAG, "Test init: touch pad [%d] val is %d", i, touch_value);
         ESP_ERROR_CHECK(touch_pad_set_thresh(i, touch_value * 2 / 3));
     }
 }
