@@ -12,7 +12,7 @@ QueueHandle_t queueOut;
 static void send_machine_state(void *args)
 {
     enum machine_status status = *(enum machine_status *)args;
-    if (xQueueSend(queueOut, &status, 200) != pdTRUE) {
+    if (xQueueSendFromISR(queueOut, &status, 200) != pdTRUE) {
         ESP_LOGE(TAG, "ERROR: Could not put item on delay queue.");
     }
 }
@@ -107,7 +107,7 @@ static void sensor_hall_timer_callback(void *args)
 
 static void status_handler_task(void *args)
 {
-    // handle events for different behaviors
+    // handle events for different status
     enum machine_status status;
     bool isTimerActive = true;
     int countTimer = 0;
