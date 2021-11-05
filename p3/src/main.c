@@ -38,6 +38,7 @@ static void touchpad_read_task(void *args)
         }
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
+    vTaskDelete(NULL);
 }
 
 /**
