@@ -123,6 +123,7 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # CONFIG_PRINT_MALLOC_INFO is not set
 # CONFIG_FREE_APP_MEMOYRY is not set
+# CONFIG_IS_INFRARED_ACTIVE is not set
 # end of Configuracion propia
 
 #
