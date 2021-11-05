@@ -1,0 +1,19 @@
+menu "Configuracion propia"
+    config PRINT_MALLOC_INFO
+        bool "Print malloc output"
+        default yes
+        help
+        print malloc info
+
+    config FREE_APP_MEMOYRY
+        bool "Free memory after malloc"
+        default yes
+        help
+        call free after malloc every iteration
+
+    config IS_INFRARED_ACTIVE
+        bool "Active infrared sensor"
+        default yes
+        help
+        Set 'true' to use infrarred as chronometer reset, set 'false' to use sensor hall instead 
+endmenu
