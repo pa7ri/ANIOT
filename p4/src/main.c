@@ -77,24 +77,24 @@ static void sensor_temp_timer_callback(void *args)
 {
     uint8_t data_temp_1, data_temp_2;
     int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_temp_1, &data_temp_2);
-        xSemaphoreTake(semaphore_print, portMAX_DELAY);
-        if (ret == ESP_ERR_TIMEOUT) {
-            ESP_LOGE(TAG, "I2C Timeout");
-        } else if (ret == ESP_OK) {
-            printf("*******************\n");
-            printf("data_temperature - byte 1: %02x\n", data_temp_1);
-            printf("data_temperature - byte 2: %02x\n", data_temp_2);
-            
-            //TODO: revisar las direcciones del sensor y como obtener un int16_t de la temperatura de 2bytes
-            uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
-            printf("data_temperature - farenheit: %02x\n", temp);
-            farenheitToCelsius(&temp);
-            printf("data_temperature - celsius: %02x\n", temp);
-            printf("*******************\n");
-        } else {
-            ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
-        }
-        xSemaphoreGive(semaphore_print);
+    xSemaphoreTake(semaphore_print, portMAX_DELAY);
+    if (ret == ESP_ERR_TIMEOUT) {
+        ESP_LOGE(TAG, "I2C Timeout");
+    } else if (ret == ESP_OK) {
+        printf("*******************\n");
+        printf("data_temperature - byte 1: %02x\n", data_temp_1);
+        printf("data_temperature - byte 2: %02x\n", data_temp_2);
+        
+        //TODO: revisar las direcciones del sensor y como obtener un int16_t de la temperatura de 2bytes
+        uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
+        printf("data_temperature - farenheit: %02x\n", temp);
+        farenheitToCelsius(&temp);
+        printf("data_temperature - celsius: %02x\n", temp);
+        printf("*******************\n");
+    } else {
+        ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
+    }
+    xSemaphoreGive(semaphore_print);
 }
 
 void app_main() {
