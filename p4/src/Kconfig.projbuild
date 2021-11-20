@@ -22,10 +22,4 @@ menu "Temperature sensor config"
         default 0x40
         help
             Hardware Address of I2C Slave Port.
-
-    config I2C_SLAVE_ADDRESS
-        hex "ESP32 Slave Address - any 7 bits - 0x28"
-        default 0x28
-        help
-            Hardware Address of I2C Slave Port.
 endmenu

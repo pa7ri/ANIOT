@@ -41,9 +41,8 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
     printf("WRITING\n");
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    //TODO: revisar las direcciones del sensor y los comandos
-    i2c_master_write_byte(cmd, SI7021_SENSOR_ADDR << 1 | I2C_MASTER_WRITE, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, SI7021_CMD_START, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, (SI7021_SENSOR_ADDR << 1) | I2C_MASTER_WRITE, ACK_VAL);
+    i2c_master_write_byte(cmd, SI7021_CMD_START, ACK_VAL);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
@@ -56,7 +55,7 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
     // Read: get data
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, SI7021_SENSOR_ADDR << 1 | I2C_MASTER_READ, ACK_VAL);
+    i2c_master_write_byte(cmd, (SI7021_SENSOR_ADDR << 1) | I2C_MASTER_READ, ACK_VAL);
     i2c_master_read_byte(cmd, data_temp_1, ACK_VAL);
     i2c_master_read_byte(cmd, data_temp_2, NACK_VAL);
 
@@ -72,28 +71,32 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
 /**
  * Timer Si7021 - A20 sensor callback
  */
-static void sensor_temp_timer_callback(void *args)
+static void sensor_temp_task(void *args)
 {
-    uint8_t data_temp_1, data_temp_2;
-    int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_temp_1, &data_temp_2);
-    xSemaphoreTake(semaphore_print, portMAX_DELAY);
-    if (ret == ESP_ERR_TIMEOUT) {
-        ESP_LOGE(TAG, "I2C Timeout");
-    } else if (ret == ESP_OK) {
-        printf("*******************\n");
-        printf("data_temperature - byte 1: %02x\n", data_temp_1);
-        printf("data_temperature - byte 2: %02x\n", data_temp_2);
-        
-        //TODO: revisar las direcciones del sensor y como obtener un int16_t de la temperatura de 2bytes
-        uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
-        printf("data_temperature : %02x\n", temp);
-        convertToCelsius(&temp);
-        printf("data_temperature - celsius: %02x\n", temp);
-        printf("*******************\n");
-    } else {
-        ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
+    while (1) {
+        uint8_t data_temp_1, data_temp_2;
+        int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_temp_1, &data_temp_2);
+        xSemaphoreTake(semaphore_print, portMAX_DELAY);
+        if (ret == ESP_ERR_TIMEOUT) {
+            ESP_LOGE(TAG, "I2C Timeout");
+        } else if (ret == ESP_OK) {
+            printf("*******************\n");
+            printf("data_temperature - byte 1: %02x\n", data_temp_1);
+            printf("data_temperature - byte 2: %02x\n", data_temp_2);
+            
+            uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
+            printf("data_temperature : %02x\n", temp);
+            convertToCelsius(&temp);
+            printf("data_temperature - celsius: %02x\n", temp);
+            printf("*******************\n");
+        } else {
+            ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
+        }
+        xSemaphoreGive(semaphore_print);
+        vTaskDelay(CONFIG_MILLIS_TO_PRINT / portTICK_RATE_MS);
     }
-    xSemaphoreGive(semaphore_print);
+    vSemaphoreDelete(semaphore_print);
+    vTaskDelete(NULL);
 }
 
 void app_main() {
@@ -103,11 +106,5 @@ void app_main() {
 
     /* --------------------  Si7021 - A20 SENSOR TIMER  -----------------------*/
     semaphore_print = xSemaphoreCreateMutex();
-    ESP_LOGI(TAG, "Configuring Si7021 - A20 sensor to print data each (%d) seconds", CONFIG_MILLIS_TO_PRINT / 1000);
-        const esp_timer_create_args_t periodic_sensor_temp_timer_args = {
-            .callback = &sensor_temp_timer_callback,
-            .name = "periodic"};
-    esp_timer_create(&periodic_sensor_temp_timer_args, &periodic_timer_sensor_temp);
-    esp_timer_start_periodic(periodic_timer_sensor_temp, CONFIG_MILLIS_TO_PRINT*1000);
-
+    xTaskCreate(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL);
 }
