@@ -6,14 +6,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+
 #include "freertos/FreeRTOS.h"
-#include "esp_heap_task_info.h"
+#include "driver/touch_pad.h"
+#include "driver/adc.h"
+
 #include "esp_log.h"
+#include "esp_heap_task_info.h"
+
 #include "esp_heap_caps.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "driver/touch_pad.h"
-#include "driver/adc.h"
+
 #include "soc/rtc_periph.h"
 #include "soc/sens_periph.h"
 
@@ -36,8 +40,8 @@
 #define MICROS_PERIODIC_SENSOR_HALL 10000   // 10 millis
 #define TAG "P3"
 
-#define FUNCTION_CMS_VAR_A 12.3                 // y = a*x^b
-#define FUNCTION_CMS_VAR_B 1.1                 
+#define FUNCTION_CMS_VAR_A 13750                 // y = a*x^b
+#define FUNCTION_CMS_VAR_B -1.1                 
 
 enum machine_status{COUNT_TIMER, START_STOP_TIMER, RESET_TIMER};
 static const char *machine_status_string[] = {

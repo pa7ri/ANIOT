@@ -121,11 +121,15 @@ static void sensor_infrared_timer_callback(void *args)
 {
     // Reading voltage on ADC1 channel 7 (GPIO 35) with max atten 11:
     adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_7,ADC_ATTEN_DB_11);  
-    int valueRaw = adc1_get_raw(ADC1_CHANNEL_7);
-    ESP_LOGI(TAG, "Sensor infrared value raw: %d", valueRaw);
+    int i, valueRaw  = 0;
+    for (i=0;i<20;i++) {
+        adc1_config_channel_atten(ADC1_CHANNEL_7,ADC_ATTEN_DB_11);  
+        valueRaw += adc1_get_raw(ADC1_CHANNEL_7);
+    }
+    valueRaw = valueRaw / 20;
 
     float valueCms = raw_to_cms(valueRaw);
+    ESP_LOGI(TAG, "Sensor infrared value raw: %d in distance %f", valueRaw, valueCms);
 
     if(valueCms <= SENSOR_INFRARED_THRESHOLD) {
         ESP_LOGI(TAG, "Sensor infrared value raw: %d  -- value cm: %f", valueRaw, valueCms);
@@ -217,7 +221,7 @@ void app_main(void)
             .callback = &sensor_infrared_timer_callback,
             .name = "periodic"};
         esp_timer_create(&periodic_infrared_timer_args, &periodic_timer_sensor_hall);
-        esp_timer_start_periodic(periodic_timer_sensor_hall, MICROS_PERIODIC_SENSOR_HALL);
+        esp_timer_start_periodic(periodic_timer_sensor_hall, MICROS_PERIODIC_CHRONOMETER);
     #else 
         /* -------------------------  SENSOR HALL  -------------------------------*/
         ESP_LOGI(TAG, "Configuring sensor hall");
