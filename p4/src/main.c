@@ -23,11 +23,11 @@ static esp_err_t config_driver_master(void) {
 }
 
 /**
- * Convert Farenheit to Celsius according to page 22 - Si7021 doc
+ * Convert to Celsius according to page 22 - Si7021 doc
  */
-float farenheitToCelsius(uint16_t *temp_farenheit){
+float convertToCelsius(uint16_t *temp){
     float celsius = 0;
-    celsius = (175.72 * (*temp_farenheit))/ 65536 - 46.85;
+    celsius = (175.72 * (*temp))/ 65536 - 46.85;
     return celsius;
 }
 
@@ -86,8 +86,8 @@ static void sensor_temp_timer_callback(void *args)
         
         //TODO: revisar las direcciones del sensor y como obtener un int16_t de la temperatura de 2bytes
         uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
-        printf("data_temperature - farenheit: %02x\n", temp);
-        farenheitToCelsius(&temp);
+        printf("data_temperature : %02x\n", temp);
+        convertToCelsius(&temp);
         printf("data_temperature - celsius: %02x\n", temp);
         printf("*******************\n");
     } else {

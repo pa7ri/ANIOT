@@ -11,7 +11,6 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
 #include "driver/adc.h"
 #include "soc/rtc_periph.h"
 #include "soc/sens_periph.h"
