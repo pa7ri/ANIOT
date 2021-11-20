@@ -41,8 +41,8 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
     printf("WRITING\n");
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (SI7021_SENSOR_ADDR << 1) | I2C_MASTER_WRITE, ACK_VAL);
-    i2c_master_write_byte(cmd, SI7021_CMD_START, ACK_VAL);
+    i2c_master_write_byte(cmd, (0x40 << 1) | I2C_MASTER_WRITE, ACK_VAL);
+    i2c_master_write_byte(cmd, 0xF3, ACK_VAL);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
@@ -55,7 +55,7 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
     // Read: get data
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (SI7021_SENSOR_ADDR << 1) | I2C_MASTER_READ, ACK_VAL);
+    i2c_master_write_byte(cmd, (0x40 << 1) | I2C_MASTER_READ, ACK_VAL);
     i2c_master_read_byte(cmd, data_temp_1, ACK_VAL);
     i2c_master_read_byte(cmd, data_temp_2, NACK_VAL);
 
@@ -93,7 +93,8 @@ static void sensor_temp_task(void *args)
             ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
         }
         xSemaphoreGive(semaphore_print);
-        vTaskDelay(CONFIG_MILLIS_TO_PRINT / portTICK_RATE_MS);
+        vTaskDelay((CONFIG_MILLIS_TO_PRINT - 1000) / portTICK_RATE_MS);
+        // Remove 1000milis from write/read wait
     }
     vSemaphoreDelete(semaphore_print);
     vTaskDelete(NULL);
@@ -104,7 +105,7 @@ void app_main() {
     ESP_ERROR_CHECK(config_driver_master());
     ESP_LOGI(TAG, "I2C master driver initialized successfully");
 
-    /* --------------------  Si7021 - A20 SENSOR TIMER  -----------------------*/
+    /* --------------------  Si7021 - A20 SENSOR TASK  -----------------------*/
     semaphore_print = xSemaphoreCreateMutex();
     xTaskCreate(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL);
 }
