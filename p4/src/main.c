@@ -17,7 +17,6 @@ static esp_err_t config_driver_master(void) {
         .scl_io_num = I2C_MASTER_SCL_IO, 
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = I2C_MASTER_FREQ_HZ, 
-        // .clk_flags = 0,          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
     };
     i2c_param_config(i2c_master_port, &conf);
     return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
@@ -43,8 +42,8 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     //TODO: revisar las direcciones del sensor y los comandos
-    i2c_master_write_byte(cmd, SI7021_SENSOR_ADDR << 1 | I2C_MASTER_WRITE, 0x1);
-    i2c_master_write_byte(cmd, SI7021_CMD_START, 0x1);
+    i2c_master_write_byte(cmd, SI7021_SENSOR_ADDR << 1 | I2C_MASTER_WRITE, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, SI7021_CMD_START, ACK_CHECK_EN);
     i2c_master_stop(cmd);
     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
@@ -57,7 +56,7 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_temp_1
     // Read: get data
     cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, SI7021_SENSOR_ADDR << 1 | I2C_MASTER_READ, 0x1);
+    i2c_master_write_byte(cmd, SI7021_SENSOR_ADDR << 1 | I2C_MASTER_READ, ACK_VAL);
     i2c_master_read_byte(cmd, data_temp_1, ACK_VAL);
     i2c_master_read_byte(cmd, data_temp_2, NACK_VAL);
 

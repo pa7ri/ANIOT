@@ -17,15 +17,15 @@ menu "Temperature sensor config"
         help
             GPIO number for I2C Master clock line.
     
-    config I2C_SLAVE_ADDRESS
-        hex "ESP Slave Address"
-        default 0x28
+    config SI7021_I2C_SLAVE_ADDRESS
+        hex "SI7021 I2C Slave Address - 7 bits is 1000000 - 0x40"
+        default 0x40
         help
             Hardware Address of I2C Slave Port.
 
-    config SENSOR_SLAVE_ADDRESS
-        hex "Sensor Slave Address - 7 bits is 1000000 - 0x40"
-        default 0x40 
+    config I2C_SLAVE_ADDRESS
+        hex "ESP32 Slave Address - any 7 bits - 0x28"
+        default 0x28
         help
             Hardware Address of I2C Slave Port.
 endmenu
