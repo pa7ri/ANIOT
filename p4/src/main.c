@@ -18,7 +18,7 @@ static esp_err_t config_driver_master(void) {
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = I2C_MASTER_FREQ_HZ, 
     };
-    i2c_param_config(i2c_master_port, &conf);
+    ESP_ERROR_CHECK(i2c_param_config(i2c_master_port, &conf));
     return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
@@ -27,7 +27,7 @@ static esp_err_t config_driver_master(void) {
  */
 float convertToCelsius(uint16_t *temp){
     float celsius = 0;
-    celsius = (175.72 * (*temp))/ 65536 - 46.85;
+    celsius = ((175.72 * (*temp))/ 65536) - 46.85;
     return celsius;
 }
 
@@ -84,10 +84,11 @@ static void sensor_temp_task(void *args)
             printf("data_temperature - byte 1: %02x\n", data_temp_1);
             printf("data_temperature - byte 2: %02x\n", data_temp_2);
             
-            uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
+            // uint16_t temp = ((uint16_t)data_temp_2 << 8) | data_temp_1;
+            uint16_t temp = ((uint16_t)data_temp_1 << 8) + data_temp_2;
             printf("data_temperature : %02x\n", temp);
-            convertToCelsius(&temp);
-            printf("data_temperature - celsius: %02x\n", temp);
+            float temp_celsius = convertToCelsius(&temp);
+            printf("data_temperature - celsius: %.2f\n", temp_celsius);
             printf("*******************\n");
         } else {
             ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
@@ -107,5 +108,6 @@ void app_main() {
 
     /* --------------------  Si7021 - A20 SENSOR TASK  -----------------------*/
     semaphore_print = xSemaphoreCreateMutex();
-    xTaskCreate(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL);
+    //xTaskCreate(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL);
+    xTaskCreatePinnedToCore(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL,0);
 }
