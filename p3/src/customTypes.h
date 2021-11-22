@@ -39,4 +39,15 @@ static const char *machine_status_string[] = {
     "count_timer", "start_stop_timer", "reset_timer",
 };
 
+
+typedef struct
+{
+    char name[dimArrayName];
+    int readingInterval;
+    QueueHandle_t sensorQueue;
+    QueueHandle_t filterQueue;
+    char filterTaskName[dimArrayName];
+    CircularVector_t filterCount;
+} SensorTemp_t;
+
 #endif
