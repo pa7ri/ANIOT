@@ -184,7 +184,7 @@ void app_main() {
                 .light_sleep_enable = true
     #endif
     };
-
+    ESP_ERROR_CHECK( esp_pm_configure(&pm_config));
 
     /* --------------------- GET CAUSE FOR DEEP SLEEP -------------------------*/
     struct timeval now;
