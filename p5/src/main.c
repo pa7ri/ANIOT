@@ -177,6 +177,15 @@ static void sensor_read_timer_callback(void *args)
 }
 
 void app_main() {
+    esp_pm_config_esp32_t pm_config = {
+            .max_freq_mhz = MAX_CPU_FREQ_MHZ,
+            .min_freq_mhz = MIN_CPU_FREQ_MHZ,
+    #if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+                .light_sleep_enable = true
+    #endif
+    };
+
+
     /* --------------------- GET CAUSE FOR DEEP SLEEP -------------------------*/
     struct timeval now;
     gettimeofday(&now, NULL);

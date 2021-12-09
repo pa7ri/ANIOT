@@ -17,6 +17,7 @@
 #include "soc/rtc_periph.h"
 #include "soc/sens_periph.h"
 #include "driver/i2c.h"
+#include "esp_pm.h"
 
 /**
  * Config driver i2c
@@ -37,6 +38,9 @@
 #define MAX_READ_COUNT 5                                    // 5 values read
 #define TIMER_WAKE_UP_SLEEP_MODE 10000000                   // 10 seconds before wake up
 #define PRIORITY_TASK 4                                     // min -->0, max --> 9
+
+#define MAX_CPU_FREQ_MHZ 240
+#define MIN_CPU_FREQ_MHZ 40
 
 #define TAG "P5"
 
