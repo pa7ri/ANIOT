@@ -3,6 +3,7 @@
 esp_timer_handle_t periodic_timer_sensor_hall;
 esp_timer_handle_t periodic_timer_reader;
 int value_sensor = 0;
+bool is_first_time = true;
 
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
 char *base_path = "/spiflash";    //Base path for FAT
@@ -17,21 +18,23 @@ QueueHandle_t queueOut;
 /**
  * Redirect logs to file
  */
-int redirect_log(const char * fmt, va_list ap) {
-
-    ESP_LOGD(TAG, "Configuration log");
-
-    FILE *f = fopen("/spiflash/log.txt", "wb");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing");
-        return 0;
+int redirect_log(const char * message, va_list args) {
+    FILE *f;
+    printf("Redirecting log value \n");
+    if(is_first_time) {
+        is_first_time = false;
+        f = fopen("/spiflash/log.txt", WRITE_FILE);
+    } else {
+        f = fopen("/spiflash/log.txt", APPEND_FILE);
     }
-    fprintf(f, fmt);
+    if (f == NULL) {
+        printf("Error openning file \n");
+        return -1;
+    }
+    vfprintf(f, message, args);
     fclose(f);
-    
-    printf(fmt);
 
-	return 1;
+	return 0;
 }
 
 
@@ -70,48 +73,38 @@ static void reader_timer_callback(void *args)
 static void status_handler_task(void *args)
 {
     FILE *f;
+    const int bufferLength = 255;
     
     ESP_ERROR_CHECK(esp_vfs_fat_spiflash_mount(base_path, "storage", &mount_config, &s_wl_handle));
-    //esp_log_set_vprintf(redirect_log);
+    esp_log_set_vprintf(&redirect_log);
 
     // handle events for different status
     enum machine_status status;
     while(1) {
         if(xQueueReceive(queueOut, &(status) , (TickType_t)  300) == pdTRUE) {
-            ESP_LOGD(TAG, "Status triggered: %s", machine_status_string[status]);
-            switch (status)
+            printf("Status triggered: %s \n", machine_status_string[status]);
+            switch (status) 
             {
                 case WRITE_LOG:
-                ESP_LOGI(TAG, "Writting value %d", value_sensor);   
-                f = fopen("/spiflash/log.txt", APPEND_FILE);
-                if (f == NULL) {
-                    ESP_LOGE(TAG, "Failed to open file for writing");
-                }
-                char str[40];
-                sprintf(str, "Read value: %d \n", value_sensor);
-                fprintf(f, str);
-                fclose(f);  
-
+                ESP_LOGI(TAG, "%d", value_sensor);
                 break;
 
                 case READ_LOG:
-                ESP_LOGI(TAG, "Reading values from file");
+                printf("Reading values from file \n");
                 //stop timers
                 esp_timer_stop(periodic_timer_sensor_hall);
                 esp_timer_stop(periodic_timer_reader);
                 //read from logs.txt file
                 f = fopen("/spiflash/log.txt", READ_FILE);
                 if (f == NULL) {
-                    ESP_LOGE(TAG, "Failed to open file for reading");
+                    printf("Failed to open file for reading");
                     return;
                 }
 
                 int i = 0;
-                int bufferLength = 255;
-                char buffer[bufferLength];
-
-                while (fgets(buffer, bufferLength, f) && i < NUM_LOGS_READ) {
-                    printf("Read : '%s' from file: 'log.txt' \n", buffer);
+                char bufferRead[bufferLength];
+                while (fgets(bufferRead, bufferLength, f) && i < NUM_LOGS_READ) {
+                    printf("Read value: %s", bufferRead);
                     i++;
                 }
                 fclose(f);

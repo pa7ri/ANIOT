@@ -28,7 +28,7 @@
 
 enum machine_status{WRITE_LOG, READ_LOG};
 static const char *machine_status_string[] = {
-    "write_log", "reade_log"
+    "write_log", "read_log"
 };
 
 #endif
