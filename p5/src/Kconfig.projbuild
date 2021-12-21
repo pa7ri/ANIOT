@@ -1,0 +1,25 @@
+menu "Temperature sensor config"
+    config MILLIS_TO_PRINT
+        int "Print temperature sensor value each X millis"
+        default 4000
+        help
+            Insert millis for periodic print of temperature, default value: 4000, aka, 4 seconds.
+
+    config I2C_MASTER_SDA
+        int "SDA GPIO Num"
+        default 21 
+        help
+            GPIO number for I2C Master data line.
+
+    config I2C_MASTER_SCL
+        int "SCL GPIO Num"
+        default 22 
+        help
+            GPIO number for I2C Master clock line.
+    
+    config SI7021_I2C_SLAVE_ADDRESS
+        hex "SI7021 I2C Slave Address - 7 bits is 1000000 - 0x40"
+        default 0x40
+        help
+            Hardware Address of I2C Slave Port.
+endmenu
