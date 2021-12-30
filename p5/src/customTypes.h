@@ -36,7 +36,7 @@
 #define NACK_VAL 0x0                                        // I2C nack value
 
 #define MAX_READ_COUNT 5                                    // 5 values read
-#define TIMER_WAKE_UP_SLEEP_MODE 10000000                   // 10 seconds before wake up
+#define TIMER_WAKE_UP_SLEEP_MODE 10000000                   // 10 seconds before wake up (microsg)
 #define PRIORITY_TASK 4                                     // min -->0, max --> 9
 
 #define MAX_CPU_FREQ_MHZ 240

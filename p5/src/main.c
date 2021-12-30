@@ -3,7 +3,7 @@
 
 esp_timer_handle_t periodic_timer_sensor_read;
 
-int read_count = 0;
+int read_count = 1;
 bool sleep_mode_active = false;
 
 static RTC_DATA_ATTR struct timeval sleep_enter_time;
@@ -93,6 +93,13 @@ static char* get_wakeup_cause()
     return wakeup_reason;
 }
 
+static void print_cause_wakeup(int64_t t_before_us){
+    int64_t t_after_us = esp_timer_get_time();
+    char* wakeup_cause = get_wakeup_cause();
+    ESP_LOGI(TAG, "Returned from light sleep, reason: %s, t=%lld ms, slept for %lld ms\n", 
+    wakeup_cause, t_after_us / 1000, (t_after_us - t_before_us) / 1000);
+}
+
 /**
  * Start light sleep mode with 10 secs timer wakeup
  */
@@ -101,10 +108,9 @@ static void start_light_mode() {
     int64_t t_before_us = esp_timer_get_time();
     esp_sleep_enable_timer_wakeup(TIMER_WAKE_UP_SLEEP_MODE);
     esp_light_sleep_start();
-    int64_t t_after_us = esp_timer_get_time();
-    char* wakeup_cause = get_wakeup_cause();
-    ESP_LOGI(TAG, "Returned from light sleep, reason: %s, t=%lld ms, slept for %lld ms\n",
-        wakeup_cause, t_after_us / 1000, (t_after_us - t_before_us) / 1000);
+
+    print_cause_wakeup(t_before_us); 
+    
 }
 
 /**
@@ -118,49 +124,20 @@ static void start_deep_mode() {
 }
 
 /**
- * Timer Si7021 - A20 sensor task
+ * Sensor Si7021 - A20 sensor timer callback
  */
-static void sensor_temp_task(void *args)
-{
-    while (1) {
-        if(read_count > MAX_READ_COUNT && !sleep_mode_active) {
+static void read_temperature_and_sleep(void *args) {
+        //if(read_count > MAX_READ_COUNT && !sleep_mode_active) {
+    if(read_count % MAX_READ_COUNT == 0) {
+            ESP_LOGI(TAG, "Read num %i to sleep", read_count);
             sleep_mode_active = true;
+#if CONFIG_LIGHT_SLEEP_MODE_ACTIVE
             /*-------- Start light sleep mode -------*/
-            //start_light_mode();
+            start_light_mode();
+#elif CONFIG_DEEP_SLEEP_MODE_ACTIVE
             /*-------- Start deep sleep mode -------*/
             start_deep_mode();
-        } else {
-            uint8_t data_temp_1, data_temp_2;
-            int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_temp_1, &data_temp_2);
-            if (ret == ESP_ERR_TIMEOUT) {
-                ESP_LOGE(TAG, "I2C Timeout");
-            } else if (ret == ESP_OK) {
-                uint16_t temp = ((uint16_t)data_temp_1 << 8) + data_temp_2;
-                ESP_LOGI(TAG, "Sensor data: %02x", temp);
-            } else {
-                ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
-            }        
-            read_count++;
-        }
-        vTaskDelay((CONFIG_MILLIS_TO_PRINT - 1000) / portTICK_RATE_MS);
-        // Remove 1000milis from write/read wait
-        
-    }
-    vTaskDelete(NULL);
-}
-
-
-/**
- * Timer Si7021 - A20 sensor timer callback
- */
-static void sensor_read_timer_callback(void *args)
-{
-    if(read_count > MAX_READ_COUNT && !sleep_mode_active) {
-            sleep_mode_active = true;
-            /*-------- Start light sleep mode -------*/
-            //start_light_mode();
-            /*-------- Start deep sleep mode -------*/
-            start_deep_mode();
+#endif
     } else {
             uint8_t data_temp_1, data_temp_2;
             int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_temp_1, &data_temp_2);
@@ -168,12 +145,39 @@ static void sensor_read_timer_callback(void *args)
                 ESP_LOGE(TAG, "I2C Timeout");
             } else if (ret == ESP_OK) {
                 uint16_t temp = ((uint16_t)data_temp_1 << 8) + data_temp_2;
-                ESP_LOGI(TAG, "Sensor data: %02x", temp);
+                ESP_LOGI(TAG, "Read num %i from sensor data: %02x", read_count, temp);
             } else {
                 ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
             }        
-            read_count++;
-        }
+    }
+        
+        read_count++;
+}
+
+/**
+ * Timer Si7021 - A20 sensor task
+ */
+static void sensor_temp_task(void *args)
+{
+    while (1) {
+        read_temperature_and_sleep(args);
+        int64_t t_before_us = esp_timer_get_time();
+        vTaskDelay(CONFIG_MILLIS_TO_PRINT / portTICK_RATE_MS);
+        print_cause_wakeup(t_before_us);
+    }
+    vTaskDelete(NULL);
+}
+
+
+
+
+/**
+ * Timer Si7021 - A20 sensor timer callback
+ */
+static void sensor_read_timer_callback(void *args) {
+    int64_t t_before_us = esp_timer_get_time();
+    read_temperature_and_sleep(args);
+    print_cause_wakeup(t_before_us);
 }
 
 void app_main() {
@@ -199,14 +203,17 @@ void app_main() {
     /* -------------------------  INIT I2C DRIVER  ----------------------------*/
     ESP_ERROR_CHECK(config_driver_master());
     ESP_LOGI(TAG, "I2C master driver initialized successfully");
-
-    /* --------------------  Si7021 - A20 SENSOR TASK  -----------------------
-    xTaskCreatePinnedToCore(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL,0);*/
-    /* --------------------  Si7021 - A20 SENSOR TIMER  -----------------------*/
+#if CONFIG_ENABLE_READ_TASK_IMPLEMENTATION
+    /* --------------------  Si7021 - A20 SENSOR TASK  ----------------------- */  
+    ESP_LOGI(TAG, "Enabled task for read sensor"); 
+    xTaskCreatePinnedToCore(sensor_temp_task, "i2c_temp_task_0", 3072, NULL, PRIORITY_TASK, NULL,0); 
+#else
+    /* --------------------  Si7021 - A20 SENSOR TIMER  ----------------------- */
+    ESP_LOGI(TAG, "Enabled timer for read sensor"); 
     const esp_timer_create_args_t periodic_sleep_sensor_read_args = {
             .callback = &sensor_read_timer_callback,
             .name = "periodic"};
         esp_timer_create(&periodic_sleep_sensor_read_args, &periodic_timer_sensor_read);
-        esp_timer_start_periodic(periodic_timer_sensor_read, CONFIG_MILLIS_TO_PRINT*1000-1000000);
-
+        esp_timer_start_periodic(periodic_timer_sensor_read, CONFIG_MILLIS_TO_PRINT*1000); 
+#endif
 }

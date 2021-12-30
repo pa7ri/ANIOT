@@ -22,4 +22,22 @@ menu "Temperature sensor config"
         default 0x40
         help
             Hardware Address of I2C Slave Port.
+    
+    config ENABLE_READ_TASK_IMPLEMENTATION
+        bool "Enable read temerature sensor from task "
+        default yes
+        help
+            Enable implement task for read temperature sensor and disable timer implementation.
+
+    config LIGHT_SLEEP_MODE_ACTIVE
+        bool "Enable light sleep mode"
+        default yes
+        help
+            Enable light sleep mode and disable deep sleep mode 
+
+    config DEEP_SLEEP_MODE_ACTIVE
+        bool "Enable deep sleep mode"
+        default no
+        help
+            Enable deep sleep mode, this is allow only if light sleep mode is disabled
 endmenu
