@@ -1,0 +1,13 @@
+menu "Configuration for sensors"
+    config SAMPLE_FREQ
+        int "Time frequency between readings"
+        default 10000
+        help
+        Set the time frequency in millis among sensor readings
+
+    config N_SAMPLES
+        int "Number of samples per reading"
+        default 5
+        help
+        Set the number of samples taken per reading
+endmenu
