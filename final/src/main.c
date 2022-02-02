@@ -1,7 +1,8 @@
 #include "customTypes.h"
 
 esp_timer_handle_t periodic_co2_timer_sensor;
-esp_timer_handle_t periodic_infrarred_timer_sensor;
+esp_timer_handle_t periodic_send_data_timer;
+
 int value_sensor = 0;
 bool is_first_time = true;
 
@@ -58,15 +59,46 @@ static void sensor_co2_timer_callback(void *args)
     enum machine_status status = READ_CO2;
     send_machine_state(&status);
 }
+static void sensor_send_data_callback(void *args)
+{
+    enum machine_status status = SEND_CO2;
+    send_machine_state(&status);
+}
+
 
 /**
- * Sensor infrarred handler
+ * Read SGP30 - CO2 sensor data
  */
-static void sensor_infrarred_timer_callback(void *args)
+static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_co2_1, uint8_t *data_co2_2)
 {
-    // TODO
-    enum machine_status status = READ_INFRARRED;
-    send_machine_state(&status);
+    int ret;
+    // Write: ask for data
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (0x40 << 1) | I2C_MASTER_WRITE, ACK_VAL);
+    i2c_master_write_byte(cmd, 0xF3, ACK_VAL);
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    i2c_cmd_link_delete(cmd);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    vTaskDelay(30 / portTICK_RATE_MS);
+
+    // Read: get data
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (0x40 << 1) | I2C_MASTER_READ, ACK_VAL);
+    i2c_master_read_byte(cmd, data_co2_1, ACK_VAL);
+    i2c_master_read_byte(cmd, data_co2_2, NACK_VAL);
+
+    printf("byte 1: %02x\n", *data_co2_1);
+    printf("byte 2: %02x\n", *data_co2_2);
+
+    i2c_master_stop(cmd);
+    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+    i2c_cmd_link_delete(cmd);
+    return ret;
 }
 
 static void status_handler_task(void *args)
@@ -85,10 +117,12 @@ static void status_handler_task(void *args)
             switch (status) 
             {
                 case READ_CO2:
-                    //store in file
+                    //TODO: read data from sensor and store in a queue
+                    uint8_t data_co2_1, data_co2_2;
+                    int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_co2_1, &data_co2_1);
                 break;
-                case READ_INFRARRED:
-                    //store in file
+                case SEND_CO2:
+                    //TODO: get average of values in the queue, send data and clean the queue
                 break;
             }
         }
@@ -114,18 +148,18 @@ void app_main(void)
     xTaskCreate(&status_handler_task, "status_machine_handler_task", 3072, NULL, PRIORITY_STATUS_HANDLER_TASK, NULL);
 
 
-    /* -------------------------  SENSOR CO2 TIMER  -------------------------------*/  
+    /* -------------------------  SENSOR READ CO2 TIMER  -------------------------------*/  
     const esp_timer_create_args_t periodic_sensor_co2_timer_args = {
         .callback = &sensor_co2_timer_callback,
         .name = "periodic"};
     esp_timer_create(&periodic_sensor_co2_timer_args, &periodic_co2_timer_sensor);
     esp_timer_start_periodic(periodic_co2_timer_sensor, CONFIG_SAMPLE_FREQ *1000);
 
-    /* -------------------------  SENSOR INFRARRED TIMER  -------------------------------*/  
-    const esp_timer_create_args_t periodic_sensor_infrarred_timer_args = {
-        .callback = &sensor_infrarred_timer_callback,
+    /* -------------------------  SEND DATA TIMER  -------------------------------*/  
+    const esp_timer_create_args_t periodic_send_data_timer_args = {
+        .callback = &sensor_send_data_callback,
         .name = "periodic"};
-    esp_timer_create(&periodic_sensor_infrarred_timer_args, &periodic_infrarred_timer_sensor);
-    esp_timer_start_periodic(periodic_infrarred_timer_sensor, CONFIG_SAMPLE_FREQ *1000);
+    esp_timer_create(&periodic_send_data_timer_args, &periodic_send_data_timer);
+    esp_timer_start_periodic(periodic_send_data_timer, CONFIG_SAMPLE_FREQ*CONFIG_N_SAMPLES *1000);
 }
 
