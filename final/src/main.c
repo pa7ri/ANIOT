@@ -44,25 +44,47 @@ int redirect_log(const char * message, va_list args) {
  */
 static void send_machine_state(void *args)
 {
-    enum machine_status status = *(enum machine_status *)args;
+    enum machine_status_ID status = *(enum machine_status_ID *)args;
     if (xQueueSendFromISR(queueOut, &status, 200) != pdTRUE) {
         ESP_LOGE(TAG, "ERROR: Could not put item on delay queue.");
     }
 }
 
 /**
+ * Convert raw signal to cms according to infrared sensor documentation
+ */
+static double raw_to_cms(int valueRaw)
+{
+    return (double) FUNCTION_CMS_VAR_A * pow(valueRaw, FUNCTION_CMS_VAR_B);
+}
+
+
+/**
  * Sensor CO2 handler
  */
 static void sensor_co2_timer_callback(void *args)
 {
-    // TODO
-    enum machine_status status = READ_CO2;
-    send_machine_state(&status);
+    uint8_t data_co2_1, data_co2_2;
+    int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_co2_1, &data_co2_2);
+    if (ret == ESP_ERR_TIMEOUT) {
+        ESP_LOGE(TAG, "I2C Timeout");
+    } else if (ret == ESP_OK) {
+        uint16_t co2Value = ((uint16_t)data_co2_1 << 8) + data_co2_2;
+
+        machine_status machineStatus;
+        machineStatus.sensorData.co2 = co2Value;
+        machineStatus.statusId = READ_CO2;
+        send_machine_state(&machineStatus);
+    } else {
+        ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
+    } 
 }
-static void sensor_send_data_callback(void *args)
+
+static void sensor_co2_send_data_callback(void *args)
 {
-    enum machine_status status = SEND_CO2;
-    send_machine_state(&status);
+    machine_status machineStatus;
+    machineStatus.statusId = SEND_CO2;
+    send_machine_state(&machineStatus);
 }
 
 
@@ -101,28 +123,68 @@ static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_co2_1,
     return ret;
 }
 
+float computeDistanceMean(float sensorInfrarredValues[]) {
+    float mean = 0;
+    for(int i = 0; i < CONFIG_N_SAMPLES; i++) {
+        mean += sensorInfrarredValues[i];
+    }
+    return mean/CONFIG_N_SAMPLES;
+}
+
+int16_t computeCO2Mean(int16_t sensorCO2Values[]) {
+    int16_t mean = 0;
+    for(int i = 0; i < CONFIG_N_SAMPLES; i++) {
+        mean += sensorCO2Values[i];
+    }
+    return (int16_t)mean/CONFIG_N_SAMPLES;
+}
+
 static void status_handler_task(void *args)
 {
-    FILE *f;
-    const int bufferLength = 255;
-    
-    ESP_ERROR_CHECK(esp_vfs_fat_spiflash_mount(base_path, "storage", &mount_config, &s_wl_handle));
-    esp_log_set_vprintf(&redirect_log);
 
-    // handle events for different status
-    enum machine_status status;
+    //TODO: create a queue to store values for CO2 sensor and infrarred sensor
+    int16_t sensorCO2Values[CONFIG_N_SAMPLES];
+    float sensorInfrarredValues[CONFIG_N_SAMPLES];
+    int counterCO2 = 0;
+    int counterInfrarred = 0;
+    /* ---------------------  HANDLE EVENT STATUS --------------------------*/ 
+
+    machine_status machineStatus;
     while(1) {
-        if(xQueueReceive(queueOut, &(status) , (TickType_t)  300) == pdTRUE) {
-            printf("Status triggered: %s \n", machine_status_string[status]);
-            switch (status) 
+        if(xQueueReceive(queueOut, &(machineStatus) , (TickType_t)  300) == pdTRUE) {
+            printf("Status triggered: %s \n", machine_status_string[machineStatus.statusId]);
+            switch (machineStatus.statusId) 
             {
                 case READ_CO2:
                     //TODO: read data from sensor and store in a queue
-                    uint8_t data_co2_1, data_co2_2;
-                    int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_co2_1, &data_co2_1);
+                    sensorCO2Values[counterCO2] = machineStatus.sensorData.co2;
+                    counterCO2++;
                 break;
                 case SEND_CO2:
                     //TODO: get average of values in the queue, send data and clean the queue
+                    
+                    float co2Mean = computeCO2Mean(sensorCO2Values);
+                    printf("CO2 status : %f ml/s \n", co2Mean);
+                    counterCO2 = 0;
+                    memset(sensorCO2Values, 0, CONFIG_N_SAMPLES*sizeof(int16_t));
+
+                break;
+                case READ_INFRARRED:
+                    //TODO: store in a queue
+                    float valueCms = raw_to_cms(machineStatus.sensorData.distance);
+                    sensorInfrarredValues[counterInfrarred] = valueCms;
+                    counterInfrarred++;
+                break;
+                case SEND_INFRARRED:
+                    //TODO: get average of values in the queue, send data and clean the queue
+                    float distanceMean = computeDistanceMean(sensorInfrarredValues);
+                    if(distanceMean > OPEN_WINDOW_THRESHOLD) {
+                        printf("Window status : CLOSED \n");
+                    } else {
+                        printf("Window status : OPEN \n");
+                    }
+                    counterInfrarred = 0;
+                    memset(sensorInfrarredValues, 0, CONFIG_N_SAMPLES*sizeof(float));
                 break;
             }
         }
@@ -135,16 +197,11 @@ static void status_handler_task(void *args)
 
 void app_main(void)
 {
-
-    /* ---------------------  REDIRECT LOGS A SPI FLASH --------------------------*/  
-    ESP_ERROR_CHECK(esp_vfs_fat_spiflash_mount(base_path, "storage", &mount_config, &s_wl_handle));
-    esp_log_set_vprintf(&redirect_log);
-
     /* ---------------------  STATUS MACHINE TASK  --------------------------*/   
     /**
      * 'machine_status' is an enum type defining all different states managed
      */
-    queueOut = xQueueCreate( 10, sizeof( enum machine_status ));
+    queueOut = xQueueCreate( 10, sizeof( machine_status ));
     xTaskCreate(&status_handler_task, "status_machine_handler_task", 3072, NULL, PRIORITY_STATUS_HANDLER_TASK, NULL);
 
 
@@ -157,9 +214,8 @@ void app_main(void)
 
     /* -------------------------  SEND DATA TIMER  -------------------------------*/  
     const esp_timer_create_args_t periodic_send_data_timer_args = {
-        .callback = &sensor_send_data_callback,
+        .callback = &sensor_co2_send_data_callback,
         .name = "periodic"};
     esp_timer_create(&periodic_send_data_timer_args, &periodic_send_data_timer);
     esp_timer_start_periodic(periodic_send_data_timer, CONFIG_SAMPLE_FREQ*CONFIG_N_SAMPLES *1000);
 }
-

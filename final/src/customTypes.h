@@ -1,4 +1,3 @@
-
 #ifndef _custom_types_h
 #define _custom_types_h
 
@@ -31,6 +30,11 @@
 #define ACK_VAL 0x1                                         // I2C ack value
 #define NACK_VAL 0x0                                        // I2C nack value
 
+#define FUNCTION_CMS_VAR_A 12.3                             // y = a*x^b
+#define FUNCTION_CMS_VAR_B 1.1                 
+
+#define OPEN_WINDOW_THRESHOLD 10                            // if closer than 10cm, the window is open                 
+
 #define READ_FILE "rb"
 #define WRITE_FILE "wb"
 #define APPEND_FILE "a"
@@ -39,9 +43,24 @@
 
 #define TAG "FINAL PROJECT"
 
-enum machine_status{READ_CO2, SEND_CO2};
+enum machine_status_ID {READ_CO2, SEND_CO2, READ_INFRARRED, SEND_INFRARRED};
 static const char *machine_status_string[] = {
-    "read_CO2", "send_CO2"
+    "read_CO2", "send_CO2","read_infrarred", "send_infrarred"
 };
+
+
+typedef struct
+{
+    int16_t co2;
+    float distance;
+    int other;
+} sensor_data;
+
+
+typedef struct 
+{
+    enum machine_status_ID statusId;
+    sensor_data sensorData;
+} machine_status;
 
 #endif
