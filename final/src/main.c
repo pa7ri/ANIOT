@@ -1,4 +1,5 @@
 #include "customTypes.h"
+#include "sgp30/sgp30.h"
 
 esp_timer_handle_t periodic_co2_timer_sensor;
 esp_timer_handle_t periodic_send_data_timer;
@@ -50,55 +51,27 @@ static void send_machine_state(void *args)
     }
 }
 
+
 /**
  * Sensor CO2 handler
  */
-static void sensor_co2_timer_callback(void *args)
-{
-    // TODO
+static void sensor_co2_timer_callback(void *args) {
+    
+    //TODO  ******  Integrarlo a la estructura y mandarlo a la cola de mensajes ******
     enum machine_status status = READ_CO2;
+    uint16_t tvoc;
+    uint16_t co2;
+
+    sgp30_measure_iaq_blocking_read(&tvoc, &co2);
+    ESP_LOGI(TAG, "Read quality air tvoc: %i, co2: %i", tvoc, co2);
+    //printf("Read quality air tvoc: %i, co2: %i/n", tvoc, co2);
+
     send_machine_state(&status);
 }
-static void sensor_send_data_callback(void *args)
-{
+
+static void sensor_send_data_callback(void *args) {
     enum machine_status status = SEND_CO2;
     send_machine_state(&status);
-}
-
-
-/**
- * Read SGP30 - CO2 sensor data
- */
-static esp_err_t read_i2c_master_sensor(i2c_port_t i2c_num, uint8_t *data_co2_1, uint8_t *data_co2_2)
-{
-    int ret;
-    // Write: ask for data
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (0x40 << 1) | I2C_MASTER_WRITE, ACK_VAL);
-    i2c_master_write_byte(cmd, 0xF3, ACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-    vTaskDelay(30 / portTICK_RATE_MS);
-
-    // Read: get data
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (0x40 << 1) | I2C_MASTER_READ, ACK_VAL);
-    i2c_master_read_byte(cmd, data_co2_1, ACK_VAL);
-    i2c_master_read_byte(cmd, data_co2_2, NACK_VAL);
-
-    printf("byte 1: %02x\n", *data_co2_1);
-    printf("byte 2: %02x\n", *data_co2_2);
-
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    return ret;
 }
 
 static void status_handler_task(void *args)
@@ -117,12 +90,11 @@ static void status_handler_task(void *args)
             switch (status) 
             {
                 case READ_CO2:
-                    //TODO: read data from sensor and store in a queue
-                    uint8_t data_co2_1, data_co2_2;
-                    int ret = read_i2c_master_sensor(I2C_MASTER_NUM, &data_co2_1, &data_co2_1);
+                    //TODO: read data from queue and store
+
                 break;
                 case SEND_CO2:
-                    //TODO: get average of values in the queue, send data and clean the queue
+                    //TODO: Send data from store 
                 break;
             }
         }
@@ -147,6 +119,9 @@ void app_main(void)
     queueOut = xQueueCreate( 10, sizeof( enum machine_status ));
     xTaskCreate(&status_handler_task, "status_machine_handler_task", 3072, NULL, PRIORITY_STATUS_HANDLER_TASK, NULL);
 
+    //Init co2 sensor
+    sensirion_i2c_init();
+    sgp30_iaq_init();
 
     /* -------------------------  SENSOR READ CO2 TIMER  -------------------------------*/  
     const esp_timer_create_args_t periodic_sensor_co2_timer_args = {
