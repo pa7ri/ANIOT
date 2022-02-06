@@ -41,24 +41,22 @@ int redirect_log(const char * message, va_list args) {
 
 
 /**
- * Send machine status
+ * Send machine state
  */
 static void send_machine_state(void *args)
 {
-    enum machine_status status = *(enum machine_status *)args;
-    if (xQueueSendFromISR(queueOut, &status, 200) != pdTRUE) {
+    machine_state state = *(machine_state *)args;
+    if (xQueueSendFromISR(queueOut, &state, 200) != pdTRUE) {
         ESP_LOGE(TAG, "ERROR: Could not put item on delay queue.");
     }
 }
 
 
 /**
- * Sensor CO2 handler
+ * Sensor CO2 read handler
  */
 static void sensor_co2_timer_callback(void *args) {
-    
-    //TODO  ******  Integrarlo a la estructura y mandarlo a la cola de mensajes ******
-    enum machine_status status = READ_CO2;
+    machine_state machineState;
     uint16_t tvoc;
     uint16_t co2;
 
@@ -68,40 +66,104 @@ static void sensor_co2_timer_callback(void *args) {
     sgp30_measure_iaq_blocking_read(&tvoc, &co2);
     sgp30_measure_raw_blocking_read(&tvoc_raw, &co2_raw);
 
-    ESP_LOGI(TAG, "Read quality air tvoc: %i, co2: %i", tvoc, co2);
+    // ESP_LOGI(TAG, "Read quality air tvoc: %i, co2: %i", tvoc, co2);  -- store data inside SPI FLASH file
     printf("Read quality air tvoc: %i, co2: %i\n", tvoc, co2);
     printf("Read quality air raw tvoc: %i, co2: %i\n", tvoc, co2);
 
-    send_machine_state(&status);
+    machineState.sensorData.tvoc = tvoc;
+    machineState.sensorData.co2 = co2;
+    machineState.stateId = READ_CO2;
+
+    send_machine_state(&machineState);
 }
 
 static void sensor_send_data_callback(void *args) {
-    enum machine_status status = SEND_CO2;
-    send_machine_state(&status);
+    machine_state machineState;
+    machineState.stateId = SEND_CO2;
+    send_machine_state(&machineState);
 }
 
-static void status_handler_task(void *args)
+static double raw_to_cms(int valueRaw)
 {
-    FILE *f;
-    const int bufferLength = 255;
-    
+    return (double) FUNCTION_CMS_VAR_A * pow(valueRaw, FUNCTION_CMS_VAR_B);
+}
+
+/**
+ * Compute mean for infrearred values
+ */
+float computeDistanceMean(float sensorInfrarredValues[]) {
+    float mean = 0;
+    for(int i = 0; i < CONFIG_N_SAMPLES; i++) {
+        mean += sensorInfrarredValues[i];
+    }
+    return mean/CONFIG_N_SAMPLES;
+}
+
+/**
+ * Compute mean for air quality measure sensor values
+ */
+float computeCO2Mean(uint16_t sensorCO2Values[]) {
+    uint16_t mean = 0;
+    for(int i = 0; i < CONFIG_N_SAMPLES; i++) {
+        mean += sensorCO2Values[i];
+    }
+    return (float)mean/CONFIG_N_SAMPLES;
+}
+
+static void state_handler_task(void *args)
+{    
+    /* ---------------------  REDIRECT LOGS A SPI FLASH --------------------------*/  
     ESP_ERROR_CHECK(esp_vfs_fat_spiflash_mount(base_path, "storage", &mount_config, &s_wl_handle));
     esp_log_set_vprintf(&redirect_log);
 
-    // handle events for different status
-    enum machine_status status;
+    /* ---- Define structures to handle the mean for measured values from sensors ----*/
+    uint16_t sensorCO2Values[CONFIG_N_SAMPLES];
+    uint16_t sensorTVOCValues[CONFIG_N_SAMPLES];
+    float sensorInfrarredValues[CONFIG_N_SAMPLES];
+    float co2Mean, tvocMean, valueCms, distanceMean;
+    int counterCO2 = 0;
+    int counterInfrarred = 0;
+
+    // handle events for different state
+    machine_state machineState;
     while(1) {
-        if(xQueueReceive(queueOut, &(status) , (TickType_t)  300) == pdTRUE) {
-            printf("Status triggered: %s \n", machine_status_string[status]);
-            switch (status) 
+        if(xQueueReceive(queueOut, &(machineState) , (TickType_t)  300) == pdTRUE) {
+            printf("State triggered: %s \n", machine_state_string[machineState.stateId]);
+            switch (machineState.stateId) 
             {
                 case READ_CO2:
-                    //TODO: read data from queue and store
-
+                    sensorCO2Values[counterCO2] = machineState.sensorData.co2;
+                    sensorTVOCValues[counterCO2] = machineState.sensorData.tvoc;
+                    counterCO2++;
                 break;
                 case SEND_CO2:
-                    //TODO: Send data from store 
+                    co2Mean = computeCO2Mean(sensorCO2Values);
+                    tvocMean = computeCO2Mean(sensorTVOCValues);
+                    printf("Average CO2 value : %f ml/s \n", co2Mean);
+                    printf("Average TVOC value : %f ml/s \n", tvocMean);
+                    counterCO2 = 0;
+                    memset(sensorCO2Values, 0, CONFIG_N_SAMPLES*sizeof(uint16_t));
+                    memset(sensorTVOCValues, 0, CONFIG_N_SAMPLES*sizeof(uint16_t));
                 break;
+                case READ_INFRARRED:
+                    valueCms = raw_to_cms(machineState.sensorData.distance);
+                    sensorInfrarredValues[counterInfrarred] = valueCms;
+                    counterInfrarred++;
+                break;
+                case SEND_INFRARRED:
+                    distanceMean = computeDistanceMean(sensorInfrarredValues);
+                    if(distanceMean > OPEN_WINDOW_THRESHOLD) {
+                        printf("Window state : CLOSED \n");
+                    } else {
+                        printf("Window state : OPEN \n");
+                    }
+                    counterInfrarred = 0;
+                    memset(sensorInfrarredValues, 0, CONFIG_N_SAMPLES*sizeof(float));
+                break;
+                default:
+                    ESP_LOGW(TAG, "Unknown state received");
+                break;
+
             }
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -113,17 +175,12 @@ static void status_handler_task(void *args)
 
 void app_main(void)
 {
-
-    /* ---------------------  REDIRECT LOGS A SPI FLASH --------------------------*/  
-  //  ESP_ERROR_CHECK(esp_vfs_fat_spiflash_mount(base_path, "storage", &mount_config, &s_wl_handle));
-  //  esp_log_set_vprintf(&redirect_log);
-
-    /* ---------------------  STATUS MACHINE TASK  --------------------------*/   
+    /* ---------------------  STATE MACHINE TASK  --------------------------*/   
     /**
-     * 'machine_status' is an enum type defining all different states managed
+     * 'machine_state' is an enum type defining all different states managed
      */
-    queueOut = xQueueCreate( 10, sizeof( enum machine_status ));
-    xTaskCreate(&status_handler_task, "status_machine_handler_task", 3072, NULL, PRIORITY_STATUS_HANDLER_TASK, NULL);
+    queueOut = xQueueCreate( 10, sizeof( machine_state ));
+    xTaskCreate(&state_handler_task, "state_machine_handler_task", 3072, NULL, PRIORITY_STATE_HANDLER_TASK, NULL);
 
     //Init co2 sensor
     sensirion_i2c_init();

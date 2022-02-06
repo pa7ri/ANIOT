@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 #include <time.h>
 #include "freertos/FreeRTOS.h"
 #include "esp_heap_task_info.h"
@@ -31,17 +32,37 @@
 #define ACK_VAL 0x1                                         // I2C ack value
 #define NACK_VAL 0x0                                        // I2C nack value
 
+#define FUNCTION_CMS_VAR_A 12.3                             // y = a*x^b
+#define FUNCTION_CMS_VAR_B 1.1                 
+#define OPEN_WINDOW_THRESHOLD 10                            // if closer than 10cm, the window is open                 
+
 #define READ_FILE "rb"
 #define WRITE_FILE "wb"
 #define APPEND_FILE "a"
 
-#define PRIORITY_STATUS_HANDLER_TASK 4                      // min -->0, max --> 9
+#define PRIORITY_STATE_HANDLER_TASK 4                      // min -->0, max --> 9
 
 #define TAG "FINAL PROJECT"
 
-enum machine_status{READ_CO2, SEND_CO2};
-static const char *machine_status_string[] = {
-    "read_CO2", "send_CO2"
+enum machine_state_ID {READ_CO2, SEND_CO2, READ_INFRARRED, SEND_INFRARRED};
+static const char *machine_state_string[] = {
+    "read_CO2", "send_CO2","read_infrarred", "send_infrarred"
 };
+
+
+typedef struct
+{
+    uint16_t tvoc;
+    uint16_t co2;
+    float distance;
+    int humidity;
+} sensor_data;
+
+
+typedef struct 
+{
+    enum machine_state_ID stateId;
+    sensor_data sensorData;
+} machine_state;
 
 #endif
