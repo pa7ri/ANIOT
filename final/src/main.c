@@ -2,6 +2,7 @@
 #include "sgp30/sgp30.h"
 
 esp_timer_handle_t periodic_co2_timer_sensor;
+esp_timer_handle_t periodic_infrarred_timer_sensor;
 esp_timer_handle_t periodic_send_data_timer;
 
 int value_sensor = 0;
@@ -75,16 +76,43 @@ static void sensor_co2_timer_callback(void *args) {
     machineState.stateId = READ_CO2;
     send_machine_state(&machineState);
 }
-
-static void sensor_send_data_callback(void *args) {
+/**
+ * Sensor infrared handler
+ */
+static void sensor_infrared_timer_callback(void *args)
+{
     machine_state machineState;
-    machineState.stateId = SEND_CO2;
+    // Reading voltage on ADC1 channel 7 (GPIO 35) with max atten 11:
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_7,ADC_ATTEN_DB_11);  
+    int valueRaw = adc1_get_raw(ADC1_CHANNEL_7);
+
+    // ESP_LOGI(TAG, "Read infrarred raw value: %i", valueRaw);  -- store data inside SPI FLASH file
+    printf("Read infrarred raw value: %d", valueRaw);
+    machineState.sensorData.distance = valueRaw;
+    machineState.stateId = READ_INFRARRED;
+
     send_machine_state(&machineState);
 }
 
-static double raw_to_cms(int valueRaw)
+/**
+ * Send sensors data
+ */
+
+static void sensor_send_data_callback(void *args) {
+    machine_state machineState;
+    /* ------ Send CO2 data   -------*/
+    machineState.stateId = SEND_CO2;
+    send_machine_state(&machineState);
+
+    /* ---- Send infrarred data ----*/
+    machineState.stateId = SEND_INFRARRED;
+    send_machine_state(&machineState);
+}
+
+static float raw_to_cms(int valueRaw)
 {
-    return (double) FUNCTION_CMS_VAR_A * pow(valueRaw, FUNCTION_CMS_VAR_B);
+    return (float) FUNCTION_CMS_VAR_A * pow(valueRaw, FUNCTION_CMS_VAR_B);
 }
 
 /**
@@ -191,6 +219,13 @@ void app_main(void)
         .name = "periodic"};
     esp_timer_create(&periodic_sensor_co2_timer_args, &periodic_co2_timer_sensor);
     esp_timer_start_periodic(periodic_co2_timer_sensor, CONFIG_SAMPLE_FREQ * 1000);
+
+    /* -------------------------  INFRARED SENSOR  -------------------------------*/  
+    const esp_timer_create_args_t periodic_infrarred_timer_args = {
+        .callback = &sensor_infrared_timer_callback,
+        .name = "periodic"};
+    esp_timer_create(&periodic_infrarred_timer_args, &periodic_infrarred_timer_sensor);
+    esp_timer_start_periodic(periodic_infrarred_timer_sensor, CONFIG_SAMPLE_FREQ *1000);
 
     /* -------------------------  SEND DATA TIMER  -------------------------------*/  
     const esp_timer_create_args_t periodic_send_data_timer_args = {
