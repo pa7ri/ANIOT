@@ -73,7 +73,6 @@ static void sensor_co2_timer_callback(void *args) {
     machineState.sensorData.tvoc = tvoc;
     machineState.sensorData.co2 = co2;
     machineState.stateId = READ_CO2;
-
     send_machine_state(&machineState);
 }
 
