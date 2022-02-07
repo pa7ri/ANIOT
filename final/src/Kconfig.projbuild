@@ -9,9 +9,15 @@ menu "Configuration for sensors"
         int "Number of samples per reading"
         default 5
         help
-        Set the number of samples taken per reading
+        Set the number of bus taken per reading
 endmenu
 menu "Quality Air Sensor"
+    config I2C_MASTER_NUM
+        int "Bus Num"
+        default 0 
+        help
+            Set the number of bus per write and reading.
+
     config I2C_MASTER_SDA
         int "SDA GPIO Num"
         default 21 

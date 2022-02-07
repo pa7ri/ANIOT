@@ -124,7 +124,7 @@ static void start_deep_mode() {
 }
 
 /**
- * Sensor Si7021 - A20 sensor timer callback
+ * Sensor Si7021 - A20 sensor 
  */
 static void read_temperature_and_sleep(void *args) {
         //if(read_count > MAX_READ_COUNT && !sleep_mode_active) {

@@ -61,7 +61,7 @@ uint8_t bus = -1;
  */
 int16_t sensirion_i2c_select_bus(uint8_t bus_idx) {
 
-    bool in_range = bus_idx > 0 && bus_idx <= I2C_NUM_MAX;
+    bool in_range = bus_idx >= 0 && bus_idx <= I2C_NUM_MAX;
 
     if(in_range) {
         bus = bus_idx;
@@ -82,6 +82,8 @@ void sensirion_i2c_init(void) {
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = I2C_MASTER_FREQ_HZ, 
     };
+    sensirion_i2c_select_bus(I2C_MASTER_NUM);
+
     ESP_ERROR_CHECK(i2c_param_config(bus, &conf));
     return i2c_driver_install(bus, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
